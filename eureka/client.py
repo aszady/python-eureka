@@ -1,7 +1,7 @@
 import json
 import random
-from urllib2 import URLError
-from urlparse import urljoin
+from urllib.request import URLError
+from urllib.parse import urljoin
 from eureka import requests
 from eureka import ec2metadata
 import logging
@@ -32,10 +32,10 @@ class EurekaGetFailedException(EurekaClientException):
 
 
 class EurekaClient(object):
-    def __init__(self, app_name, eureka_url=None, eureka_domain_name=None, host_name=None, data_center="Amazon",
+    def __init__(self, app_name, eureka_url=None, eureka_domain_name=None, host_name=None, data_center="MyOwn",
                  vip_address=None, secure_vip_address=None, port=None, secure_port=None, use_dns=True, region=None,
                  prefer_same_zone=True, context="eureka/v2", eureka_port=None,
-                 health_check_url=None):
+                 health_check_url=None, home_page_url=None):
         super(EurekaClient, self).__init__()
         self.app_name = app_name
         self.eureka_url = eureka_url
@@ -63,6 +63,7 @@ class EurekaClient(object):
         self.context = context
         self.health_check_url = health_check_url
         self.eureka_urls = self.get_eureka_urls()
+        self.home_page_url = home_page_url
 
     def _get_txt_records_from_dns(self, domain):
         records = dns.resolver.query(domain, 'TXT')
@@ -86,7 +87,7 @@ class EurekaClient(object):
             return [self.eureka_url]
         elif self.use_dns:
             zone_dns_map = self.get_zones_from_dns()
-            zones = zone_dns_map.keys()
+            zones = list(zone_dns_map.keys())
             assert len(zones) > 0, "No availability zones found for, please add them explicitly"
             if self.prefer_same_zone:
                 if self.get_instance_zone() in zones:
@@ -119,8 +120,15 @@ class EurekaClient(object):
         else:
             raise NotImplementedError("%s does not implement DNS lookups" % self.data_center)
 
+    def get_instance_id(self):
+        if self.data_center == "Amazon":
+            return ec2metadata.get('instance-id')
+        else:
+            return ('%s:%s:%d' % (self.host_name, self.app_name, self.port))
+
     def register(self, initial_status="STARTING"):
         data_center_info = {
+            '@class': 'com.netflix.appinfo.InstanceInfo$DefaultDataCenterInfo',
             'name': self.data_center
         }
         if self.data_center == "Amazon":
@@ -143,10 +151,12 @@ class EurekaClient(object):
                 'vipAddr': self.vip_address or '',
                 'secureVipAddr': self.secure_vip_address or '',
                 'status': initial_status,
-                'port': self.port,
-                'securePort': self.secure_port,
+                'port': {'$': self.port, '@enabled': 'true'},
+                'securePort': {'$': self.secure_port, '@enabled': 'false'},
                 'dataCenterInfo': data_center_info,
-                'healthCheckUrl': self.health_check_url or ''
+                'healthCheckUrl': self.health_check_url or '',
+                'instanceId': self.get_instance_id(),
+                'homePageUrl': self.home_page_url
             }
         }
         success = False
@@ -161,19 +171,16 @@ class EurekaClient(object):
             except (EurekaHTTPException, URLError) as e:
                 last_e = e
         if not success:
-            raise EurekaRegistrationFailedException("Did not receive correct reply from any instances, last error: " + str(e))
+            raise EurekaRegistrationFailedException("Did not receive correct reply from any instances, last error: " + str(last_e))
 
     def update_status(self, new_status):
-        instance_id = self.host_name
-        if self.data_center == "Amazon":
-            instance_id = ec2metadata.get('instance-id')
         success = False
         last_e = None
         for eureka_url in self.eureka_urls:
             try:
                 r = requests.put(urljoin(eureka_url, "apps/%s/%s/status?value=%s" % (
                     self.app_name,
-                    instance_id,
+                    self.get_instance_id(),
                     new_status
                 )))
                 r.raise_for_status()
@@ -182,16 +189,13 @@ class EurekaClient(object):
             except (EurekaHTTPException, URLError) as e:
                 last_e = e
         if not success:
-            raise EurekaUpdateFailedException("Did not receive correct reply from any instances, last error: " + str(e))
+            raise EurekaUpdateFailedException("Did not receive correct reply from any instances, last error: " + str(last_e))
 
     def heartbeat(self):
-        instance_id = self.host_name
-        if self.data_center == "Amazon":
-            instance_id = ec2metadata.get('instance-id')
         success = False
         for eureka_url in self.eureka_urls:
             try:
-                r = requests.put(urljoin(eureka_url, "apps/%s/%s" % (self.app_name, instance_id)))
+                r = requests.put(urljoin(eureka_url, "apps/%s/%s" % (self.app_name, self.get_instance_id())))
                 r.raise_for_status()
                 success = True
                 break

@@ -8,7 +8,7 @@
 # option) any later version.
 #
 import time
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import socket
 
 METAOPTS = ['ami-id', 'ami-launch-index', 'ami-manifest-path',
@@ -39,14 +39,14 @@ class EC2Metadata:
                 s.connect((addr, port))
                 s.close()
                 return True
-            except socket.error, e:
+            except socket.error as e:
                 time.sleep(1)
 
         return False
 
     def _get(self, uri):
         url = 'http://%s/%s/%s' % (self.addr, self.api, uri)
-        value = urllib.urlopen(url).read()
+        value = urllib.request.urlopen(url).read()
         if "404 - Not Found" in value:
             return None
 
@@ -95,6 +95,6 @@ def display(metaopts, prefix=False):
             value = "unavailable"
 
         if prefix:
-            print "%s: %s" % (metaopt, value)
+            print(("%s: %s" % (metaopt, value)))
         else:
-            print value
+            print(value)

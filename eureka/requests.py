@@ -1,14 +1,14 @@
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 from eureka import __version__ as client_version
 import gzip
-import StringIO
+import io
 
 
 class EurekaHTTPException(Exception):
     pass
 
 
-class Request(urllib2.Request):
+class Request(urllib.request.Request):
     """
     Instead of requiring a version of `requests`, we use this easy wrapper around urllib2 to avoud possible
     version conflicts with people own software.
@@ -16,11 +16,11 @@ class Request(urllib2.Request):
     def __init__(self, url, method="GET", data=None, headers=None,
                  origin_req_host=None, unverifiable=False):
         self.method = method
-        self._opener = urllib2.build_opener()
+        self._opener = urllib.request.build_opener()
         self._opener.addheaders = [
             ('User-agent', 'python-eureka v%s' % client_version)
         ]
-        urllib2.Request.__init__(self, url, data=data, headers=headers or {},
+        urllib.request.Request.__init__(self, url, data=data, headers=headers or {},
                                  origin_req_host=origin_req_host, unverifiable=unverifiable)
 
     def get_method(self):
@@ -29,16 +29,16 @@ class Request(urllib2.Request):
     @classmethod
     def create(cls, method, url, data=None, headers=None):
         headers = headers or {}
-        request = cls(url, method, data=data, headers=headers)
+        request = cls(url, method, data=data.encode('utf-8') if type(data) is str else data, headers=headers)
         try:
             response = request._opener.open(request)
-        except urllib2.HTTPError as e:
+        except urllib.error.HTTPError as e:
             return Response(e.code, e.read(), url, method)
 
         content = response.read()
         info = response.info()
         if "gzip" in info.get("Content-Encoding", "").lower():
-            data = StringIO.StringIO(content)
+            data = io.StringIO(content)
             gzipper = gzip.GzipFile(fileobj=data)
             content = gzipper.read()
 
@@ -54,7 +54,7 @@ class Response(object):
 
     def raise_for_status(self):
         if not (200 <= self.status_code < 300):
-            raise EurekaHTTPException(u"HTTP %s: %s" % (self.status_code, self.content))
+            raise EurekaHTTPException("HTTP %s: %s" % (self.status_code, self.content))
 
     def __repr__(self):
         return "<Response: [%s]>" % self.status_code
