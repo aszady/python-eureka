@@ -33,6 +33,7 @@ class EurekaGetFailedException(EurekaClientException):
 
 class EurekaClient(object):
     def __init__(self, app_name, eureka_url=None, eureka_domain_name=None, host_name=None, data_center="MyOwn",
+                 ip_addr=None,
                  vip_address=None, secure_vip_address=None, port=None, secure_port=None, use_dns=True, region=None,
                  prefer_same_zone=True, context="eureka/v2", eureka_port=None,
                  health_check_url=None, home_page_url=None):
@@ -48,6 +49,7 @@ class EurekaClient(object):
         self.vip_address = vip_address
         self.secure_vip_address = secure_vip_address
         self.port = port
+        self.ip_addr = ip_addr
         self.secure_port = secure_port
         self.use_dns = use_dns
         # Region where eureka is deployed - For AWS specify one of the AWS regions, for other datacenters specify a
@@ -148,6 +150,7 @@ class EurekaClient(object):
             'instance': {
                 'hostName': self.host_name,
                 'app': self.app_name,
+                'ipAddr': self.ip_addr,
                 'vipAddr': self.vip_address or '',
                 'secureVipAddr': self.secure_vip_address or '',
                 'status': initial_status,
@@ -156,7 +159,9 @@ class EurekaClient(object):
                 'dataCenterInfo': data_center_info,
                 'healthCheckUrl': self.health_check_url or '',
                 'instanceId': self.get_instance_id(),
-                'homePageUrl': self.home_page_url
+                'homePageUrl': self.home_page_url,
+                'vipAddress': self.host_name,
+                'secureVipAddress': self.host_name
             }
         }
         success = False
